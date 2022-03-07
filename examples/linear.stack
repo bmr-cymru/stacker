@@ -1,0 +1,6 @@
+stk_new linear
+loop_dev loop0 100M
+loop_dev loop1 100M
+linear_dev linear0 loop0:50M+50M loop1:50M+50M
+linear_dev linear1 loop0:0+50M loop1:0+50M
+stk_end

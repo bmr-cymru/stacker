@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# Stacker - linear template
+
+# Copyright 2021-2022 Red Hat, Inc. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Set the type of layer
+LAYER_TYPE="linear"
+
+# Set the name of this layer
+LAYER_PATH=${BASH_SOURCE[0]}
+
+. /usr/lib/stacker/layers/_layer_init.sh
+
+DEV_PATH="/dev/mapper/$LAYER_NAME"
+
+start() {
+    stkinfo "Starting $LAYER_NAME"
+    local dev
+    local dev_str
+    local dev_path
+    local start=0
+    local offset=0
+    local length=0
+    local table=()
+    local range=""
+    local tablerow
+    local tableargs
+    # shellcheck disable=SC2153
+    for dev_str in "${DEVICES[@]}"; do
+        dev=${dev_str%%:*}
+        # shellcheck disable=SC2153
+        dev_path="${DEV_PATHS[$dev]}"
+        range=${dev_str##*:}
+        offset=${range%%+*}
+        length=${range##*+}
+        if [ "$offset" == "" ] || [ "$offset" == "$range" ]; then
+            offset=0
+        fi
+        if [ "$length" == "" ] || [ "$length" == "$range" ]; then
+            length=$(dev_sectors "$dev_path")
+        fi
+        tableargs=("$start" "$length" "$dev_path" "$offset")
+        tablerow=$(printf "%d %d linear %s %d\n" "${tableargs[@]}")
+        table+=("$tablerow")
+        ((start += length))
+    done
+    stktrace "$LAYER_NAME table:"
+    for tablerow in "${table[@]}"; do
+        stktrace "$tablerow"
+    done
+    for tablerow in "${table[@]}"; do
+        echo "$tablerow"
+    done | dmsetup create "$LAYER_NAME"
+}
+
+status() {
+    local status
+    if ! dm_exists "$LAYER_NAME"; then
+        if ! have_devices "${DEVICES[@]}"; then
+            status="configured"
+        else
+            status="ready"
+        fi
+    elif dm_suspended "$LAYER_NAME"; then
+        status="suspended"
+    else
+        status="running"
+    fi
+    stkdebug "$LAYER_NAME status: $status"
+    printf "%s\n" "$status"
+}
+
+_dm_layer_main "$@"
+
+# vim: set et ts=4 sw=4 :

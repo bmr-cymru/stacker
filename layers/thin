@@ -1,0 +1,88 @@
+#!/bin/bash
+
+# Stacker - thin template
+
+# Copyright 2021-2022 Red Hat, Inc. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Set the type of layer
+LAYER_TYPE="thin"
+
+# Set the name of this layer
+LAYER_PATH=${BASH_SOURCE[0]}
+
+. /usr/lib/stacker/layers/_layer_init.sh
+DEV_PATH="/dev/mapper/$LAYER_NAME"
+
+start() {
+    local pool_dev
+    local dev_id
+    local length
+    local table
+    local tableargs
+    local status
+    stkinfo "Starting $LAYER_NAME"
+    if ! check_status ready; then
+        stkerror "Cannot start $LAYER_NAME: not ready"
+        return 1
+    fi
+    # shellcheck disable=SC2153
+    pool_dev="${DEV_PATHS[$POOL_DEVICE]}"
+    dev_id="$THIN_DEV_ID"
+    length="$THIN_DEV_SIZE"
+    tableargs=(0 "$length" "$pool_dev" "$dev_id")
+    stktrace "Thin table arguments:" "${tableargs[@]}"
+    table=$(printf "%d %d thin %s %d" "${tableargs[@]}")
+    stktrace "Creating thin device with table: $table"
+    dmsetup create "$LAYER_NAME" --table "$table"
+}
+
+status() {
+    local status
+    if ! dm_exists "$LAYER_NAME"; then
+        if ! have_devices "$POOL_DEVICE"; then
+            status="configured"
+        else
+            if [[ "$THIN_ID_CREATED" ]]; then
+                status="ready"
+            else
+                status="configured"
+            fi
+        fi
+    elif dm_suspended "$LAYER_NAME"; then
+        status="suspended"
+    else
+        status="running"
+    fi
+    stkdebug "$LAYER_NAME status: $status"
+    printf "%s\n" "$status"
+}
+
+set_up() {
+    dmsetup message "${DEV_PATHS[$POOL_DEVICE]}" 0 "create_thin $THIN_DEV_ID"
+    THIN_ID_CREATED=1
+    echo "THIN_ID_CREATED=1" >> "${LAYER_CONF}"
+}
+
+tear_down() {
+    dmsetup message "${DEV_PATHS[$POOL_DEVICE]}" 0 "delete $THIN_DEV_ID"
+    sed -i '/THIN_ID_CREATED/d' "${LAYER_CONF}"
+
+}
+
+_dm_layer_main "$@"
+
+# vim: set et ts=4 sw=4 :

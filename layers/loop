@@ -1,0 +1,137 @@
+#!/bin/bash
+
+# Stacker - loop template
+
+# Copyright 2021-2022 Red Hat, Inc. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Set the type of layer
+LAYER_TYPE="loop"
+
+# Set the name of this layer
+LAYER_PATH=${BASH_SOURCE[0]}
+
+. /usr/lib/stacker/layers/_layer_init.sh
+
+_sysfs_backing_file() {
+    cat /sys/block/"$LAYER_NAME"/loop/backing_file 2>/dev/null
+}
+
+_have_backing_file() {
+    if [ -f "$BACKING_FILE" ]; then
+        return 0
+    fi
+    return 1
+}
+
+set_up() {
+    stkinfo "Setting up $LAYER_NAME (type=$LAYER_TYPE)"
+    local img_dir
+    local bs=512
+    local count=0
+    local size
+    local parts
+    img_dir=$(dirname "$BACKING_FILE")
+
+    if ! [ -d "$img_dir" ]; then
+        stkerror "Backing file directory not found: $img_dir"
+        exit 1
+    fi
+    if [ -f "$BACKING_FILE" ]; then
+        size=$(stat -c "%s" "$BACKING_FILE")
+        if ! [ "$size" == "$BACKING_FILE_SIZE" ]; then
+            stkerror "Backing file already exists: $BACKING_FILE"
+        fi
+        exit 1
+    fi
+    bs=512
+    for pow in {3..1}; do
+        if ! (( BACKING_FILE_SIZE % 1024**pow )); then
+            bs=$((1024**pow))
+            break
+        fi
+    done
+    count=$((BACKING_FILE_SIZE / bs))
+    size=$(size_to_units "$BACKING_FILE_SIZE")
+    stkinfo "Creating backing file size=$size ($bs*$count)"
+    dd if=/dev/zero of="$BACKING_FILE" bs="$bs" count="$count" status=none
+    _apply_partitions "$BACKING_FILE"
+}
+
+tear_down() {
+    stkinfo "Tearing down $LAYER_NAME"
+    if ! [ -f "$BACKING_FILE" ]; then
+        stkerror "Backing file does not exist: $BACKING_FILE"
+        return 1
+    fi
+    rm -f "$BACKING_FILE"
+}
+
+start() {
+    stkinfo "Starting $LAYER_NAME"
+    if ! _have_backing_file; then
+        stkerror "Backing file does not exist: $BACKING_FILE"
+        return 1
+    fi
+    stkdebug "Binding $DEV_PATH to $BACKING_FILE"
+    if ! losetup -P "$DEV_PATH" "$BACKING_FILE"; then
+        stkerror "Could not bind $DEV_PATH to backing file"
+        return 1
+    fi
+}
+
+stop() {
+    stkinfo "Stopping $LAYER_NAME"
+    if ! _have_backing_file; then
+        stkerror "Backing file does not exist: $BACKING_FILE"
+        return 1
+    fi
+    if ! [ -b "$DEV_PATH" ]; then
+        stkerror "Loop device does not exist: $LAYER_NAME"
+        return 1
+    fi
+    stkdebug "Deleting loop device /dev/$LAYER_NAME"
+    losetup -d "$DEV_PATH"
+}
+
+status() {
+    local ret=0
+    local status
+    if [ -f "$BACKING_FILE" ] && [ -b "$DEV_PATH" ]; then
+        SYSFS_BACKING_FILE=$(_sysfs_backing_file)
+        if [ "$BACKING_FILE" == "$SYSFS_BACKING_FILE" ]; then
+            status="running"
+        elif [ "$SYSFS_BACKING_FILE" == "" ]; then
+            status="ready"
+        else
+            status="error"
+            ret=1
+        fi
+    else
+        if [ -f "$BACKING_FILE" ]; then
+            status="ready"
+        else
+            status="configured"
+        fi
+    fi
+    stkdebug "$LAYER_NAME status: $status"
+    printf "%s\n" $status
+    return $ret
+}
+
+_layer_main "$@"
+
+# vim: et ts=4 sw=4:

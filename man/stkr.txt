@@ -1,0 +1,50 @@
+NAME
+  stkr - configure device-mapper test stacks.
+
+SYNOPSIS
+  stkr [options] [command] [command_options]
+
+DESCRIPTION
+  The stkr command executes and controls stacker scripts and device stacks.
+
+OPTIONS
+
+  -h, --help                Print help text and exit.
+  --logfile {file}          Write log messages to a file.
+  --logfile-level {level}   Minimum file log level (1..6).
+  --syslog {facility}       Write log messages to the system log.
+  --syslog-level {level}    Minimum system log level (1..6).
+  -t, --tmpdir              Temporary directory path.
+  -f, --force               Force operation.
+
+COMMANDS
+
+run [script_file] [script_options]
+
+Run the stacker script script_file.
+
+list [-s|--status]
+List configured stacks optionally printing status for each stack.
+
+start [stack_name]
+Start the stack named stack_name. Layers are initialised (if needed)
+and started in sequence.
+
+stop [stack_name]
+Stop the stack named stack_name and release devices. The stack remains
+configured and can be re-started.
+
+delete [stack_name]
+Remove the stack named stack_name and delete all associated resources.
+
+SCRIPTS
+
+Stacker scripts are shell scripts that interact with the stacker library to
+define and interact with stacks of device-mapper and system devices. The
+scripting library (normally installed at /usr/lib/stacker/stacklib.sh) is
+
+
+EXAMPLES
+
+AUTHOR
+  Bryn M. Reeves <bmr@redhat.com>

@@ -1,0 +1,8 @@
+stk_new loopparts
+loop_dev loop0 1200M --mbr 100M -
+loop_dev loop1 1800M --gpt 500M 1000M -
+linear_dev linear0 loop0p1 loop0p2
+thin_pool pool0 loop1p1 loop1p2 128 64 ignore_discard
+thin_dev thin0 pool0 0 1G
+thin_dev thin1 pool0 1 1G
+stk_end

@@ -1,0 +1,6 @@
+stk_new sdparts
+sd_dev sda --mbr 100M -
+thin_pool pool0 sda1 sda2 128 64 ignore_discard
+thin_dev thin0 pool0 0 1G
+thin_dev thin1 pool0 1 1G
+stk_end

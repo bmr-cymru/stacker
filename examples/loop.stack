@@ -1,0 +1,3 @@
+stk_new loop
+loop_dev loop0 10M
+stk_end

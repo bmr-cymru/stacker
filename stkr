@@ -1,0 +1,476 @@
+#!/bin/bash
+
+# Script for managing test device stacks
+
+# Copyright 2021-2022 Red Hat, Inc. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Verify bash version (FIXME - move into lib?)
+if ((BASH_VERSINFO[0] < 4)); then
+    printf -- 'Stacker requires bash-4 or newer' >&2
+    exit 1
+fi
+
+STACKER_VERSION="001"
+STACKER_CMD=$(basename "$(readlink -f "$0")")
+
+readonly stkr_cmd=$(readlink -f "$0")
+
+set -o pipefail
+
+usage() {
+    #                                                   80x25 linebreak here ^
+    cat << EOF
+Usage: $STACKER_CMD <command> [OPTION] <stack> [STACK_OPTIONS]
+Version: $STACKER_VERSION
+
+Execute and interact with stacker scripts for building test device stacks.
+
+EOF
+}
+
+long_usage() {
+    # FIXME real long usage
+    usage
+}
+
+_call_layer() (
+    # Pass logging environment to layer script
+    # shellcheck disable=SC2086
+    export ${__STACKLOG_EXPORT_VARS__?}
+    local layer="$1"
+    shift
+    "$layer" "$@"
+    return $?
+)
+
+stkr_status() {
+    local name="$1"
+    local lnum
+    local layer
+    local lstatus
+    local lname
+    local stack_dir
+    local status_str=""
+    declare -A status
+    if [[ "$name" == "" ]]; then
+        stkerror "stkr_status: stack name is required"
+        return 1
+    fi
+    stack_dir="$STACKER_DIR/stacks/$name"
+    if ! [[ -e "$stack_dir" ]]; then
+        stkerror "stkr_status: stack $name not found"
+        return 1
+    fi
+    stktrace "Checking status for configuration $name at $stack_dir"
+    for ((lnum=99; lnum>=0; lnum--)); do
+        for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
+            if ! [[ -f $layer ]]; then
+                continue
+            fi
+            lname=$(basename "$layer")
+            lname=${lname#[0-9][0-9]-}
+            lstatus=$(_call_layer "$layer" status)
+            status["$lname"]="$lstatus"
+        done
+        # Only collect the top-level status
+        if [[ "${status[*]}" ]]; then
+            break
+        fi
+    done
+    for lname in ${!status[@]}; do
+        status_str+=$(printf "%s:%s " "$lname" "${status[$lname]}")
+    done
+    printf "%s " $status_str
+}
+
+stkr_running() {
+    local name="$1"
+    local lnum
+    local layer
+    local lstatus
+    local lname
+    local stack_dir
+    local found
+    if ! [[ "$name" ]]; then
+        stkerror "stkr_running: stack name is required"
+        return 1
+    fi
+    stack_dir="$STACKER_DIR/stacks/$name"
+    if ! [[ -e "$stack_dir" ]]; then
+        stkerror "stkr_running: stack $name not found"
+        return 1
+    fi
+    stktrace "Checking status for configuration $name at $stack_dir"
+    for ((lnum=99; lnum>=0; lnum--)); do
+        for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
+            if ! [[ -f $layer ]]; then
+                continue
+            fi
+            lname=$(basename "$layer")
+            lstatus=$(_call_layer "$layer" status)
+            stkdebug "Checking status of layer $lname"
+            if [[ $lstatus == running ]]; then
+                return 0
+            else
+                found=1
+                break
+            fi
+        done
+        if [[ $found == 1 ]]; then
+            break
+        fi
+    done
+    return 1
+}
+
+stkr_start() {
+    local name="$1"
+    local lnum=0
+    local layer
+    local lstatus
+    local lname
+    local stack_dir
+    if ! [[ "$name" ]]; then
+        stkerror "stkr_start: stack name is required"
+        return 1
+    fi
+    stack_dir="$STACKER_STACKS/$name"
+    if ! [[ -e "$stack_dir" ]]; then
+        stkerror "stkr_start: stack $name not found"
+        return 1
+    fi
+    stktrace "Starting stack configuration $name at $stack_dir"
+    for ((lnum=0; lnum<100; lnum++)); do
+        for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
+            if ! [[ -f $layer ]]; then
+                continue
+            fi
+            stktrace "Starting layer at $layer"
+            lname=$(basename "$layer")
+            lstatus=$(_call_layer "$layer" status)
+            stktrace "Checking status of layer $lname ($lstatus)"
+            if [[ $lstatus == error ]]; then
+                stkerror "Layer $lname status is error"
+                return 1
+            fi
+            if [[ $lstatus != ready ]] && [[ $lstatus != running ]]; then
+                stkdebug "Setting up layer $lname"
+                if ! _call_layer "$layer" set_up; then
+                    stkerror "Failed to set up $lname"
+                    return 1
+                fi
+                lstatus=$(_call_layer "$layer" status)
+                if ! [[ $lstatus == ready ]] && ! [[ $lstatus == running ]]; then
+                    stkerror "Failed to set up $lname ($lstatus)"
+                    return 1
+                fi
+            fi
+            if [[ $lstatus != running ]] && ! _call_layer "$layer" start; then
+                stkfatal "Failed to start layer: $lname"
+                return 1
+            fi
+        done
+    done
+}
+
+stkr_stop() {
+    local name="$1"
+    local lnum=0
+    local layer
+    local lstatus
+    local lname
+    local stack_dir
+    if ! [[ "$name" ]]; then
+        stkerror "stkr_stop: stack name is required"
+        return 1
+    fi
+    stack_dir="$STACKER_DIR/stacks/$name"
+    if ! [[ -e "$stack_dir" ]]; then
+        stkerror "stkr_stop: stack $name not found"
+        return 1
+    fi
+    stktrace "Stopping stack configuration $name at $stack_dir"
+    for ((lnum=99; lnum>=0; lnum--)); do
+        for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
+            if ! [[ -f $layer ]]; then
+                continue
+            fi
+            lname=$(basename "$layer")
+            lstatus=$(_call_layer "$layer" status)
+            stkdebug "Checking status of layer $lname"
+            if [[ $lstatus == error ]]; then
+                stkwarn "Layer $lname status is error"
+            fi
+            if [[ $lstatus == running ]]; then
+                _call_layer "$layer" stop
+            fi
+        done
+    done
+}
+
+stkr_run() {
+    stkinfo "Running Stacker script" "$@"
+    local stack_script="$1"
+    shift
+    local ret=0
+    stktrace "Starting script subshell..."
+    (
+        . "$stackerbasedir"/stacklib.sh
+        if [ -f "$stack_script" ]; then
+            stktrace "Loading script from $stack_script"
+            # shellcheck disable=SC1090
+            if . "$stack_script" "$@"; then
+                stkinfo "Stack script exited with success"
+                if ! [[ $_STACK_WRITTEN ]]; then
+                    stk_end
+                fi
+            else
+                ret="$?"
+                stkerror "Stack script exited with status $ret"
+            fi
+        else
+            # FIXME PATH style search for stack scripts?
+            ret=127
+            stkerror "Could not run $stack_script: no such file or directory"
+        fi
+        stktrace "Leaving script subshell with status $ret"
+        exit $ret
+    )
+}
+
+stkr_delete() {
+    local name="$1"
+    local stack_dir="${STACKER_STACKS}/${name}"
+    if ! [[ "$name" ]]; then
+        stkerror "stkr_delete: stack name is required"
+        exit 1
+    fi
+    if stkr_running "$name" && ! [[ $force ]]; then
+        stkerror "Cannot delete running stack without -f/--force"
+        exit 1
+    fi
+    if [[ $stack_dir == "${STACKER_STACKS}" ]]; then
+        stkerror "BUG: attempting to delete ${STACKER_STACKS}!"
+        exit 1
+    fi
+    rm -rf "$stack_dir"
+}
+
+stkr_list() {
+    local stack_path
+    local stack_name
+    local pattern
+    local status
+    local stack_status
+    while [[ "$1" ]]; do
+        if [[ $1 == "-s" ]] || [[ $1 == "--status" ]]; then
+            status=1
+        else
+            pattern="$1"
+        fi
+        shift
+    done
+    if ! [[ "$pattern" ]]; then
+        pattern="*"
+    fi
+    for stack_path in "${STACKER_STACKS}"/$pattern; do
+        if ! [[ -e "$stack_path" ]]; then
+            continue
+        fi
+        if ! stack_name=$(basename "$stack_path"); then
+            stkfatal "Failed to parse stack name from stack path $stack_path"
+            exit 1
+        fi
+        if [[ "$status" == 1 ]]; then
+            if ! stack_status=$(stkr_status "$stack_name"); then
+                stkwarn "Error getting status for stack $stack_name"
+            fi
+        fi
+        printf "%s %s\n" "$stack_name" "$stack_status"
+    done
+}
+
+# Arguments following the run command are passed to the stack script:
+# adjust the arguments presented to getopt.
+_cmd_arg=-1
+_argc=0
+for arg in "$@"; do
+    if [[ "$arg" =~ (run|start|stop|delete|list|status) ]]; then
+        _cmd_arg="$_argc"
+        break
+    fi
+    ((_argc++))
+done
+if [ "$_cmd_arg" -ge 0 ]; then
+    ARGS=("${@:1:((_cmd_arg + 1))}")
+    CMD_ARGS=("${@:$((_cmd_arg + 2))}")
+else
+    ARGS=("$@")
+fi
+unset _cmd_arg
+unset _argc
+
+if ! OPTIONS=$(
+    unset POSIXLY_CORRECT
+    # shellcheck disable=SC2086
+    getopt \
+        -n "$STACKER_CMD" \
+        -o "ft:h" \
+        --long "force" \
+        --long "help" \
+        --long "logfile:" \
+        --long "logfile-level:" \
+        --long "syslog:" \
+        --long "syslog-level:" \
+        --long "tmpdir:" \
+        -- ${ARGS[*]}
+); then
+    usage
+    exit 1
+fi
+
+eval set -- "$OPTIONS"
+
+while :; do
+    case "$1" in
+        -h | --help)
+            long_usage
+            exit 1
+            ;;
+        --logfile)
+            logfile="$2"
+            shift
+            ;;
+        --logfile-level)
+            fileloglvl="$2"
+            shift
+            ;;
+        --syslog)
+            syslog="$2"
+            shift
+            ;;
+        --syslog-level)
+            sysloglvl="$2"
+            shift
+            ;;
+        -t | --tmpdir)
+            tmpdir="$2"
+            shift
+            ;;
+        -f | --force)
+            force=1
+            shift
+            ;;
+        --)
+            shift
+            break
+            ;;
+        run | start | stop | delete | list)
+            break
+            ;;
+    esac
+    shift
+done
+
+# Load global configuration
+. /etc/stacker/stkr.conf
+
+# Command line log config overrides stkr.conf
+logfile=${logfile:=$STKR_LOGFILE}
+fileloglvl=${fileloglvl:=$STKR_LOGFILE_LEVEL}
+syslog=${syslog:=$STKR_SYSLOG}
+sysloglvl=${sysloglvl:=$STKR_SYSLOG_LEVEL}
+
+# Enable debug level file logging by default if a log file is
+# specified on the command line.
+[[ $logfile ]] && fileloglvl=${fileloglvl:=6}
+
+[[ $tmpdir ]] || tmpdir=$TMPDIR
+[[ $tmpdir ]] || tmpdir=/var/tmp
+
+readonly TMPDIR="$(realpath -e "$tmpdir")"
+readonly STACKER_TMPDIR=$(mktemp -p "$TMPDIR/" -d -t stacker.XXXXXX)
+
+trap '
+    ret="$?"
+    rm -rf "$STACKER_TMPDIR"
+    exit "$ret";
+    ' EXIT
+
+trap 'exit 1;' SIGINT
+
+[[ $stackerbasedir ]] || stackerbasedir=/usr/lib/stacker
+stackerbasedir="$(readlink -f $stackerbasedir)"
+
+. "$stackerbasedir/stacklog.sh"
+stklog_init
+
+. "$stackerbasedir/stacker-functions.sh"
+
+STACKER_DIR=/var/lib/stacker
+STACKER_STACKS="$STACKER_DIR"/stacks
+
+if [ ! -e $STACKER_DIR ]; then
+    stkfatal "Stacker state directory $STACKER_DIR not found"
+    exit 1
+fi
+
+if [ ! -d $STACKER_DIR ]; then
+    stkfatal "$STACKER_DIR is not a directory"
+    exit 1
+fi
+
+if [ ! -e $STACKER_STACKS ]; then
+    stkfatal "Stacker state directory $STACKER_STACKS not found"
+fi
+
+if [ ! -d $STACKER_STACKS ]; then
+    stkfatal "$STACKER_STACKS is not a directory"
+fi
+
+stk_command="$1"
+case "$stk_command" in
+    run)
+        stkr_run "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    start)
+        stkr_start "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    stop)
+        stkr_stop "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    delete)
+        stkr_delete "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    list)
+        stkr_list "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    status)
+        stkr_status "${CMD_ARGS[@]}"
+        exit "$?"
+        ;;
+    *)
+        stkfatal "Unknown command: $stk_command"
+        exit 1
+        ;;
+esac
+# vim: set et ts=4 sw=4 :
