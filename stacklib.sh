@@ -35,6 +35,7 @@ stk_new() {
     shift
     declare -g STACK_NAME="$name"
     declare -g STACK_DIR="$STACKER_STACKS/$name"
+    declare -g STACK_TOP=0
     declare -g _STACK_WRITTEN
     if [ ! -e "$STACK_DIR" ]; then
         if ! mkdir "$STACK_DIR"; then
@@ -102,6 +103,8 @@ stk_load() {
 # to stack.conf.
 stk_end() {
     local conf_file="$STACK_DIR/stack.conf"
+    stkdebug "Writing stack coniguration to $conf_file"
+    stkdebug "Stack top is: $STACK_TOP"
     printf "%s\n" "# Stacker configuration file ($STACK_NAME)" > "$conf_file"
     if [[ ${DEV_PATHS[*]} ]]; then
         _declare_p_global DEV_PATHS >> "$conf_file"
@@ -109,6 +112,7 @@ stk_end() {
     if [[ ${DEV_SIZES[*]} ]]; then
         _declare_p_global DEV_SIZES >> "$conf_file"
     fi
+    _declare_p_global STACK_TOP >> "$conf_file"
     _STACK_WRITTEN=1
 }
 
@@ -558,6 +562,7 @@ linear_dev() {
         stkfatal "Could not determine linear device size for $name"
         exit 1
     fi
+    ((lnum > $STACK_TOP)) && STACK_TOP="$lnum"
     DEV_PATHS["$name"]="/dev/mapper/$name"
     _install_layer linear "$name" "$lnum"
     _linear_conf "$name" "${devices[@]}"
@@ -633,6 +638,7 @@ thin_pool() {
         exit 1
     fi
 
+    ((lnum > $STACK_TOP)) && STACK_TOP="$lnum"
     DEV_PATHS["$name"]="/dev/mapper/$name"
     DEV_SIZES["$name"]=DEV_SIZES["$data_dev"]
     _install_layer thin-pool "$name" "$lnum"
@@ -677,6 +683,7 @@ thin_dev() {
         exit 1
     fi
 
+    ((lnum > $STACK_TOP)) && STACK_TOP="$lnum"
     DEV_PATHS["$name"]="/dev/mapper/$name"
     DEV_SIZES["$name"]="$dev_size"
     _install_layer thin "$name" "$lnum"

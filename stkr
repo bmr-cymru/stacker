@@ -57,6 +57,12 @@ _call_layer() (
     return $?
 )
 
+_stack_top() (
+    local stack_dir="$1"
+    . "$stack_dir/stack.conf"
+    printf "%s\n" $STACK_TOP
+)
+
 stkr_status() {
     local name="$1"
     local lnum
@@ -76,7 +82,7 @@ stkr_status() {
         return 1
     fi
     stktrace "Checking status for configuration $name at $stack_dir"
-    for ((lnum=99; lnum>=0; lnum--)); do
+    for ((lnum=$(_stack_top "$stack_dir"); lnum>=0; lnum--)); do
         for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
             if ! [[ -f $layer ]]; then
                 continue
@@ -95,6 +101,7 @@ stkr_status() {
         status_str+=$(printf "%s:%s " "$lname" "${status[$lname]}")
     done
     printf "%s " $status_str
+    printf "\n"
 }
 
 stkr_running() {
@@ -115,7 +122,7 @@ stkr_running() {
         return 1
     fi
     stktrace "Checking status for configuration $name at $stack_dir"
-    for ((lnum=99; lnum>=0; lnum--)); do
+    for ((lnum=$(_stack_top "$stack_dir"); lnum>=0; lnum--)); do
         for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
             if ! [[ -f $layer ]]; then
                 continue
@@ -154,7 +161,7 @@ stkr_start() {
         return 1
     fi
     stktrace "Starting stack configuration $name at $stack_dir"
-    for ((lnum=0; lnum<100; lnum++)); do
+    for ((lnum=0; lnum<=$(_stack_top "$stack_dir"); lnum++)); do
         for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
             if ! [[ -f $layer ]]; then
                 continue
@@ -204,7 +211,7 @@ stkr_stop() {
         return 1
     fi
     stktrace "Stopping stack configuration $name at $stack_dir"
-    for ((lnum=99; lnum>=0; lnum--)); do
+    for ((lnum=$(_stack_top "$stack_dir"); lnum>=0; lnum--)); do
         for layer in "$stack_dir"/"$(printf "%02d\n" "$lnum")"-*; do
             if ! [[ -f $layer ]]; then
                 continue

@@ -193,7 +193,7 @@ have_devices() {
 # in a shell function to become local in scope regardless of the
 # attributes of the variable they are intended to recreate.
 _declare_p_global() {
-    declare -p "$1" | sed 's/^declare -\([aAfFiIlnrtux]\)/declare -g\1/'
+    declare -p "$1" | sed 's/^declare -\([aAfFiIlnrtux]*\)[-]*/declare -g\1/'
 }
 
 # vim: set et ts=4 sw=4 :
