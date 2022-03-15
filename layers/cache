@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Stacker - cache target template
+
+# Copyright 2021-2022 Red Hat, Inc. All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+# Set the type of layer
+LAYER_TYPE="cache"
+
+# Set the name of this layer
+LAYER_PATH=${BASH_SOURCE[0]}
+
+. /usr/lib/stacker/layers/_layer_init.sh
+
+DEV_PATH="/dev/mapper/$LAYER_NAME"
+
+set_up() {
+    local flag_file="$LAYER_DIR/$LAYER_NAME.init"
+    local metadata_dev="${DEV_PATHS[$METADATA_DEVICE]}"
+    if [[ -f $flag_file ]]; then
+        return 0
+    fi
+    if dd if=/dev/zero of="$metadata_dev" bs=4K count=1 status=none; then
+        touch "$flag_file"
+    fi
+}
+
+start() {
+    local metadata_dev
+    local cache_dev
+    local origin_dev
+    local length
+    local table
+    local tableargs
+    stkinfo "Starting $LAYER_NAME"
+    # shellcheck disable=SC2153
+    metadata_dev="${DEV_PATHS[$METADATA_DEVICE]}"
+    cache_dev="${DEV_PATHS[$CACHE_DEVICE]}"
+    origin_dev="${DEV_PATHS[$ORIGIN_DEVICE]}"
+    length=$(dev_sectors "$origin_dev")
+    tableargs=(0 "$length" "$metadata_dev" "$cache_dev" "$origin_dev"
+               "$BLOCK_SIZE" "$CACHE_MODE")
+    stktrace "Cache table arguments: ${tableargs[*]}"
+    table=$(printf "%d %d cache %s %s %s %d 1 %s default 0" "${tableargs[@]}")
+    stktrace "Creating cache with table: $table"
+    dmsetup create "$LAYER_NAME" --table "$table"
+}
+
+stop() {
+    stkinfo "Stopping $LAYER_NAME"
+    dmsetup remove "$LAYER_NAME"
+}
+
+resume() {
+    stkinfo "Resuming $LAYER_NAME"
+    dmsetup resume "$LAYER_NAME"
+}
+
+suspend() {
+    stkinfo "Suspending $LAYER_NAME"
+    dmsetup suspend "$LAYER_NAME"
+}
+
+status() {
+    local status
+    if ! dm_exists "$LAYER_NAME"; then
+        if ! have_devices "$METADATA_DEVICE" "$CACHE_DEVICE" "$ORIGIN_DEVICE" ; then
+            status="configured"
+        elif ! [[ -f "$LAYER_DIR/$LAYER_NAME.init" ]]; then
+            status="configured"
+        else
+            status="ready"
+        fi
+    elif dm_suspended "$LAYER_NAME"; then
+        status="suspended"
+    else
+        status="running"
+    fi
+    stkdebug "$LAYER_NAME status: $status"
+    printf "%s\n" "$status"
+}
+
+_dm_layer_main "$@"
+
+# vim: set et ts=4 sw=4 :

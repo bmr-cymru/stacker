@@ -696,6 +696,53 @@ EOF
     stkinfo "Configured $name as $lnum-$name -> thin"
 }
 
+cache_dev() {
+    local name="$1"
+    local metadata_dev="$2"
+    local cache_dev="$3"
+    local origin_dev="$4"
+    local block_size="${5:-512}"
+    local mode="${6:-writeback}"
+    local policy="${7:-default}"
+    local lnum
+    local devices=("$metadata_dev" "$cache_dev" "$origin_dev")
+    local min_block_size=64
+    local max_block_size=2097152
+    _check_in_stack cache
+    _check_name "$name"
+
+    if ((block_size < min_block_size)); then
+        stkfatal "Cache block_size cannot be < $min_block_size sectors (found $block_size)"
+        exit 1
+    fi
+    if ((block_size > max_block_size)); then
+        stkfatal "Cache block_size cannot be > $max_block_size sectors (found $block_size)"
+        exit 1
+    fi
+    if ((block_size % 64)); then
+        stkfatal "Cache block size must be a multiple of 64 sectors"
+        exit 1
+    fi
+    if ! lnum=$(_find_layer "${devices[@]}"); then
+        stkfatal "Could not determine layer number for $name"
+        exit 1
+    fi
+
+    ((lnum > $STACK_TOP)) && STACK_TOP="$lnum"
+    DEV_PATHS["$name"]="/dev/mapper/$name"
+    DEV_SIZES["$name"]=DEV_SIZES["$origin_dev"]
+    _install_layer cache "$name" "$lnum"
+    cat > "${STACK_DIR}/${name}.conf" <<EOF
+DEVICES=(${devices[@]})
+METADATA_DEVICE=${metadata_dev}
+CACHE_DEVICE=${cache_dev}
+ORIGIN_DEVICE=${origin_dev}
+BLOCK_SIZE=${block_size}
+CACHE_MODE=${mode}
+EOF
+    stkinfo "Configured $name as $lnum-$name -> cache"
+}
+
 #
 # Init hooks
 #
