@@ -743,6 +743,100 @@ EOF
     stkinfo "Configured $name as $lnum-$name -> cache"
 }
 
+_writecache_check_feature_arg() {
+    local arg="$1"
+    shift
+    local allowed=("$@")
+    local value
+    for allow in "${allowed[@]}"; do
+        if [[ "$arg" =~ $allow ]]; then
+            value="${BASH_REMATCH[1]}"
+            if [[ "=" =~ [$arg] ]]; then
+                printf "%s %s\n" "${arg%%=*}" "$value"
+            else
+                printf "%s\n" "$arg"
+            fi
+            return 0
+        fi
+    done
+    return 1
+}
+
+writecache_dev() {
+    stktrace "writecache_dev $@"
+    local name="$1"
+    local cache_type="$2"
+    local cache_dev="$3"
+    local origin_dev="$4"
+    local block_size="${5:-4096}"
+    shift 5
+    stktrace "writecache feature args: $@"
+    local feature_args=("$@")
+    local feature_arg
+    local allow_feature_args=(
+        "start_sector=([0-9]*)"
+        "high_watermark=([0-9]*)"
+        "low_watermark=([0-9]*)"
+        "writeback_jobs=([0-9]*)"
+        "autocommit_blocks=([0-9]*)"
+        "autocommit_time=([0-9]*)"
+        "fua"
+        "nofua"
+        "cleaner"
+        "max_age=([0-9]*)"
+        "metadata_only"
+        "pause_writeback=([0-9*)"
+    )
+    local arg
+    local lnum
+    local devices=("$cache_dev" "$origin_dev")
+    local min_block_size=512
+    local max_block_size=4096
+    declare -a optional_args
+    _check_in_stack writecache
+    _check_name "$name"
+
+    if ((block_size < min_block_size)); then
+        stkfatal "Writecache block_size cannot be < $min_block_size sectors (found $block_size)"
+        exit 1
+    fi
+    if ((block_size > max_block_size)); then
+        stkfatal "Writecache block_size cannot be > $max_block_size sectors (found $block_size)"
+        exit 1
+    fi
+    # FIXME: check block_size >= device logical block size
+
+    for feature_arg in "${feature_args[@]}"; do
+        stktrace "Checking writecache feature_arg $feature_arg"
+        if ! arg=$(_writecache_check_feature_arg "$feature_arg" "${allow_feature_args[@]}"); then
+            stkfatal "Invalid writecache feature argument: $feature_arg"
+            exit 1
+        fi
+        optional_args+=($arg) # args with value split to two array elements
+    done
+
+    stkdebug "Parsed ${#optional_args[*]} optional arguments: ${optional_args[*]}"
+
+    if ! lnum=$(_find_layer "${devices[@]}"); then
+        stkfatal "Could not determine layer number for $name"
+        exit 1
+    fi
+
+    ((lnum > $STACK_TOP)) && STACK_TOP="$lnum"
+    DEV_PATHS["$name"]="/dev/mapper/$name"
+    DEV_SIZES["$name"]=DEV_SIZES["$origin_dev"]
+    _install_layer writecache "$name" "$lnum"
+    cat > "${STACK_DIR}/${name}.conf" <<EOF
+DEVICES=(${devices[@]})
+CACHE_TYPE=${cache_type}
+CACHE_DEVICE=${cache_dev}
+ORIGIN_DEVICE=${origin_dev}
+BLOCK_SIZE=${block_size}
+OPTIONAL_ARGS=(${optional_args[*]})
+EOF
+    stkinfo "Configured $name as $lnum-$name -> writecache"
+}
+
 #
 # Init hooks
 #
