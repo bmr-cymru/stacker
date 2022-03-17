@@ -165,7 +165,7 @@ GPT disk label format:
 To define a partitioned loop device of 1GiB, with two MBR primary partitions,
 one of 100MiB and the other taking up the remaining space:
 
-  `loop_dev loop0 1G --mbp 100M -`
+  `loop_dev loop0 1G --mbr 100M -`
 
 ### MBR partitioning limits
 Stacker currently supports a maximum of four (primary) partitions on devices
@@ -199,13 +199,13 @@ device configuration.
 
 Once a device has been defined in the current stack by calling its definition
 function the name given as the first parameter can be used in subsequent calls
-to specify devices to use for further layers in the stack.
+to specify devices to be consumed by further layers in the stack.
 
 #### linear
 
-The linear target is configured by calling the `linear_dev` function to create
-a new linear device. The devices that make up the linear device are specified as
-a device name, with an optional range of sectors.
+The linear target is configured by calling the `linear_dev` function to declare
+and define a new linear device. The devices that make up the linear device are
+specified as a device name, with an optional range of sectors.
 
 ```
 linear_dev <name> <dev_range1> [<dev_range_2> ... <dev_range_N>]
@@ -232,6 +232,11 @@ Maps the first 512MiB of Linux loop back device `loop0`.
   * `vdc1:1G+1G`
 
 Maps the second 1GiB of VirtIO disk device `vdc1`.
+
+ * `vdc1 vdd2:0+2G`
+
+Creates a linear device with two segments, mapping the whole of VirtIO disk
+partition `vdc1` and the first 2GiB of device `vdd2`.
 
 #### thin-pool
 
