@@ -48,7 +48,7 @@ layer_scripts = _layer_init.sh \
 
 .PHONY: all clean check tag changelog version release
 
-all: man
+all: $(manpages)
 
 install: all
 	mkdir -p $(DESTDIR)$(pkglibdir)
@@ -63,6 +63,7 @@ install: all
 	install -m755 stacklog.sh $(DESTDIR)$(pkglibdir)
 	install -m755 stacklib.sh $(DESTDIR)$(pkglibdir)
 	install -m755 etc/stkr.conf $(DESTDIR)$(sysconfdir)/stacker
+	install -m644 man/stkr.8 $(DESTDIR)$(mandir)/man8
 
 	for l in $(layer_scripts); do install -m755 layers/$$l $(DESTDIR)$(pkglibdir)/layers/; done
 
@@ -102,6 +103,6 @@ release:
 
 %.8: %.txt
 	@mkdir -p $(dir $@)
-	$(V) txt2man -t $(basename $(notdir $<)) \
+	$(V) bin/txt2man -t $(basename $(notdir $<)) \
 	-s 8 -v "System Manager's Manual" -r "Device Mapper Tools" $< > $@
 
