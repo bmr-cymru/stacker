@@ -57,6 +57,7 @@ install: all
 	mkdir -p $(DESTDIR)$(sysconfdir)/stacker
 	mkdir -p $(DESTDIR)$(pkgstatedir)/stacks
 	mkdir -p $(DESTDIR)$(mandir)/man8
+	mkdir -p $(DESTDIR)$(datadir)/doc/$(PKGNAME)
 
 	install -m755 stkr $(DESTDIR)$(bindir)
 	install -m755 stacker-functions.sh $(DESTDIR)$(pkglibdir)
@@ -64,6 +65,7 @@ install: all
 	install -m755 stacklib.sh $(DESTDIR)$(pkglibdir)
 	install -m755 etc/stkr.conf $(DESTDIR)$(sysconfdir)/stacker
 	install -m644 man/stkr.8 $(DESTDIR)$(mandir)/man8
+	install -m644 README.md $(DESTDIR)$(datadir)/doc/$(PKGNAME)
 
 	for l in $(layer_scripts); do install -m755 layers/$$l $(DESTDIR)$(pkglibdir)/layers/; done
 
