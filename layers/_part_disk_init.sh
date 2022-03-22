@@ -100,7 +100,8 @@ status() {
     if [ -b "$DEV_PATH" ]; then
         if [ -f "/sys/block/$LAYER_NAME/device/state" ]; then
             SYSFS_STATE=$(_sysfs_block_device_state "$LAYER_NAME")
-            if [ "$SYSFS_STATE" == "running" ]; then
+            stktrace "Layer $LAYER_NAME sysfs device state: $SYSFS_STATE"
+            if [[ "$SYSFS_STATE" == running ]] || [[ "$SYSFS_STATE" == live ]]; then
                 ret=0
                 if _check_partition_state "$DEV_PATH" "$LAYER_NAME.parts"; then
                     if _check_partition_nodes "$DEV_PATH" "$LAYER_NAME.parts"; then
