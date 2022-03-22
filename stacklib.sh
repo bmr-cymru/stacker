@@ -494,6 +494,9 @@ _find_layer() {
         if [[ $dev =~ (vd|sd)[a-z]*[0-9] ]]; then
             dev="${dev%[0-9]*}"
         fi
+        if [[ $dev =~ nvme[0-9]*n[0-9]*p[0-9]* ]]; then
+            dev="${dev%p[0-9]*}"
+        fi
         if [[ ":" =~ [$dev] ]]; then
             dev="${dev%:*}"
         fi
