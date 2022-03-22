@@ -352,13 +352,18 @@ _disk_dev() {
     local size_err
     local size
     local lnum=00
+    if ! [[ $name =~ ${disk_type}.* ]]; then
+        stkfatal "Invalid device name for ${disk_type}_dev type: $name"
+        exit 1
+    fi
     if ! size_arg=$(parse_units -s "$1"); then
         stkfatal "Could not parse $disk_type disk size: $1"
-        return 1
+        exit 1
     fi
     shift
     if ! size=$(dev_sectors "/dev/$name"); then
         stkfatal "Could not determine size of $name"
+        exit 1
     fi
     stkdebug "Device $name size=$size size_arg=$size_arg"
     if ((size < size_arg)); then
@@ -375,21 +380,19 @@ _disk_dev() {
 
 sd_dev() {
     # sd_dev <sdX> <MinSize> [partitions]
-    stkinfo "sd_dev $@"
-    _check_in_stack sd_dev || return 1
+    _check_in_stack sd_dev || exit 1
     _disk_dev sd "%d" "$@"
 }
 
 vd_dev() {
     # vd_dev <vdX> <MinSize> [partitions]
-    stkdebug "vd_dev $@"
-    _check_in_stack vd_dev || return 1
+    _check_in_stack vd_dev || exit 1
     _disk_dev vd "%d" "$@"
 }
 
 nvme_dev() {
     # vd_dev <nvmeXnY> <MinSize> [partitions]
-    _check_in_stack nvme_dev || return 1
+    _check_in_stack nvme_dev || exit 1
     _disk_dev nvme "p%d" "$@"
 }
 
