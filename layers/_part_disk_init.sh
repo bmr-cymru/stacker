@@ -66,9 +66,13 @@ _check_partition_nodes() {
     local parts_file="$2"
     local new_part
     local pline
+    local partsep
+    if [[ "$dev_path" =~ .*nvme.* ]]; then
+        partsep="p"
+    fi
     cat "$LAYER_DIR/$parts_file" | while read pline; do
         if [[ $new_part == 1 ]]; then
-            if ! [ -b "${dev_path}${pline}" ]; then
+            if ! [ -b "${dev_path}${partsep}${pline}" ]; then
                 return 1
             fi
             new_part=0
