@@ -389,7 +389,6 @@ vd_dev() {
 
 nvme_dev() {
     # vd_dev <nvmeXnY> <MinSize> [partitions]
-    stkinfo "nvme_dev"
     _check_in_stack nvme_dev || return 1
     _disk_dev nvme "p%d" "$@"
 }
