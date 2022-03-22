@@ -266,7 +266,7 @@ stkr_delete() {
         stkerror "stkr_delete: stack name is required"
         exit 1
     fi
-    if stkr_running "$name" && ! [[ $force ]]; then
+    if [[ -f $stack_dir/stack.conf ]] && stkr_running "$name" && ! [[ $force ]]; then
         stkerror "Cannot delete running stack without -f/--force"
         exit 1
     fi
