@@ -25,28 +25,7 @@ LAYER_TYPE="nvme"
 LAYER_PATH=${BASH_SOURCE[0]}
 
 . /usr/lib/stacker/layers/_layer_init.sh
-
-_sysfs_block_device_state() {
-    local dev="$1"
-    cat "/sys/block/$dev/device/state" 2>/dev/null
-}
-
-status() {
-    local ret=0
-    local status="error"
-    if [ -b "$DEV_PATH" ]; then
-        SYSFS_STATE=$(_sysfs_block_device_state "$NVME_DEVICE")
-        if [ "$SYSFS_STATE" == "running" ]; then
-            status="running"
-        else
-            status="error"
-            ret=1
-        fi
-    fi
-    stkdebug "$LAYER_NAME status: $status"
-    printf "%s\n" $status
-    return $ret
-}
+. /usr/lib/stacker/layers/_part_disk_init.sh
 
 _layer_main "$@"
 
