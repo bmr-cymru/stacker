@@ -353,7 +353,7 @@ _disk_dev() {
     local size
     local lnum=00
     if ! [[ $name =~ ${disk_type}.* ]]; then
-        stkfatal "Invalid device name for ${disk_type}_dev type: $name"
+        stkfatal "Invalid device name for $disk_type device type: $name"
         exit 1
     fi
     if ! size_arg=$(parse_units -s "$1"); then
