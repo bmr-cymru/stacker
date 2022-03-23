@@ -219,6 +219,7 @@ _part_conf() {
             ptype=${1##--}
             shift
         fi
+    else
         # no partition spec
         return 0
     fi
