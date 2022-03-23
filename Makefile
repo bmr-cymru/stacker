@@ -44,7 +44,9 @@ layer_scripts = _layer_init.sh \
 		sd \
 		thin \
 		thin-pool \
-		vd
+		vd \
+		cache \
+		writecache \
 
 .PHONY: all clean check tag changelog version release
 
