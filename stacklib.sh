@@ -211,12 +211,16 @@ _part_conf() {
     declare -a part_sizes
     stktrace "_part_conf $name $part_fmt $@"
     parts_file="${STACK_DIR}/${name}.parts"
-    if [[ "$1" != "--gpt" ]] && [[ "$1" != "--mbr" ]]; then
-        stkfatal "Invalid partition spec: $@"
-        exit 1
-    else
-        ptype=${1##--}
-        shift
+    if [[ "$1" ]]; then
+        if [[ "$1" != "--gpt" ]] && [[ "$1" != "--mbr" ]]; then
+            stkfatal "Invalid partition spec: $@"
+            exit 1
+        else
+            ptype=${1##--}
+            shift
+        fi
+        # no partition spec
+        return 0
     fi
     if ! [[ $part_fmt =~ .*%d ]]; then
         stkfatal "Invalid partition name format: '$part_fmt'"
