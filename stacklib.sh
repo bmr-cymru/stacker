@@ -356,6 +356,7 @@ _disk_dev() {
     local size_err
     local size
     local lnum=00
+    _check_name "$name"
     if ! [[ $name =~ ${disk_type}.* ]]; then
         stkfatal "Invalid device name for $disk_type device type: $name"
         exit 1
@@ -469,6 +470,41 @@ _parse_linear_devices() {
     fi
 }
 
+_check_in_proc_mounts() {
+    local name="$1"
+    grep  "$name" /proc/mounts &>/dev/null
+}
+
+_check_in_proc_swaps() {
+    local name="$1"
+    grep "$name" /proc/swaps &>/dev/null
+
+}
+
+_check_in_lvm_pvs() {
+    local name="$1"
+    pvs -opv_name --noheadings 2>/dev/null | grep "$name" &>/dev/null &>/dev/null
+
+}
+
+_check_in_use() {
+    local name="$1"
+    stktrace "Checking if $name is used by the system"
+    if _check_in_proc_mounts "$name"; then
+        stkfatal "Device $name is used by the system (/proc/mounts)"
+        exit 1
+    fi
+    if _check_in_proc_swaps "$name"; then
+        stkfatal "Device $name is used by the system (/proc/swaps)"
+        exit 1
+    fi
+    if _check_in_lvm_pvs "$name"; then
+        stkfatal "Device $name is used by the system (LVM2 physical volume)"
+        exit 1
+    fi
+    # FIXME: add check for mpath device member
+}
+
 _check_name() {
     local name="$1"
     local valid_chars="a-zA-Z0-9_-"
@@ -483,6 +519,7 @@ _check_name() {
             exit 1
         fi
     done
+    _check_in_use "$name"
     return 0
 }
 
